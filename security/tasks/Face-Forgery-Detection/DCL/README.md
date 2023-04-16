@@ -37,6 +37,26 @@ Before run the code, you should run
 $ pip install -r requirements.txt
 ```
 
+You also need to modify ~/.local/lib/python3.7/site-packages/timm/models/efficientnet.py
+At line 554, you need to change
+```python
+# Original
+x = self.blocks(x)
+... ...
+return x
+
+# After modify
+x = self.blocks[0](x)
+x2 = self.blocks[1](x)
+x = self.blocks[2](x2)
+x = self.blocks[3](x)
+x = self.blocks[4](x)
+x = self.blocks[5](x)
+x = self.blocks[6](x)
+... ...
+return x, x2
+```
+
 ### Dataset
 
 For the Faceforensics++, you should extract face using DSFD and generate the forgery masks
