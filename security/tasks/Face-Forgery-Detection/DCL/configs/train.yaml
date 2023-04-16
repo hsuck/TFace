@@ -1,13 +1,13 @@
 seed: 1234
-torch_home: 'PATH TO YOUR TORCH HOME'
+torch_home: '/home/u9775528/.local/lib/python3.7/site-packages/torch/'
 froze: False
 use_amp: False
 dataset:
   name: 'FaceForensics'
   moco: True
   FaceForensics:
-    data_root: 'PATH TO YOUR DATA ROOT'
-    data_types: ''
+    data_root: '/work/u9775528/'
+    data_types: [ 'larger_images']
     compressions: 'c23'
     num_frames: 50
     methods:
@@ -15,18 +15,24 @@ dataset:
     mask_size: 10
     pair: True
     corr_pair: False
-    random_patch: 3
+    random_patch:
     srm: 0.5
-    diff_frame: 0.5
-    image_size: 299
+    diff_frame:
+    jpeg_frame: 0.5
+  ffpp:
+    data_root: '/work/u9775528/'
+    data_types: [ 'jpeg_10_images' ]
+    num_frames: 25
+    methods:
+    pair: True
+    random_patch: None
   CelebDF:
-    data_root: 'PATH TO YOUR DATA ROOT'
-    data_types: ''
+    data_root: '/work/u9775528/CelebDF/'
+    data_types: 'original'
     num_frames: 25
     pair: True
     random_patch: 3
     sample: 0
-
 
 transform:
   image_size: 299
@@ -42,7 +48,7 @@ model:
     K: 32768
     m: 0.999
     T: 0.07
-    threshold: 5
+    threshold: 7
     
 base_model: 
     name: BinaryClassifier
@@ -64,7 +70,7 @@ loss:
 optimizer:
   name: 'Adam'
   params:
-    lr: 2.0e-4
+    lr: 2.0e-5  
     weight_decay: 1.0e-5
 
 
@@ -96,5 +102,5 @@ wandb:
   project: Face-Forgery-Detection
   group: DCL
   save_code: True
-  name:
+  name: DCL+hash(514)
   resume:

@@ -12,42 +12,31 @@ except Exception:
     from utils import RandomPatch
 
 
-class CelebDF(Dataset):
+class DFD(Dataset):
     def __init__(self,
                  data_root,
                  data_types,
                  num_frames,
                  split,
-                 transform=None,
-                 pair=False,
-                 random_patch=None,
-                 sample=0):
-        """Load Celeb-DF dataset
+                 transform=None):
+        """Load DFD dataset
 
         Args:
-            data_root: Root for Celeb-DF.
+            data_root: Root DFD.
             data_types: Different version of dataset.
             num_frames: Frame numbers for each video.
             split: ["train","val","test"]
             transform (optional): Data transform. Defaults to None.
-            pair (bool, optional): Return images with q&k or single image. Defaults to False.
-            random_patch (int, optional):  Defaults to None.
-            sample (int, optional): Defaults to 0.
         """
         self.data_root = Path(data_root)
         self.data_types = data_types
         self.num_frames = num_frames
         self.split = split
         self.transform = transform
-        self.pair = pair
-        self.sample = sample
 
         self.real_items = []
         self.fake_items = []
-        if random_patch != None:
-            self.random_patch = RandomPatch(grid_size=random_patch)
-        else:
-            self.random_patch = None
+
         self._read_videos()
         self._read_images()
 
@@ -56,14 +45,10 @@ class CelebDF(Dataset):
         print(f'Total number of data: {pos_len+neg_len} | pos: {pos_len}, neg: {neg_len}')
 
         np.random.seed(1234)
-        if self.sample > 0:
-            self.real_items = np.random.choice(self.real_items, neg_len // sample, replace=False).tolist()
-            self.fake_items = np.random.choice(self.fake_items, pos_len // sample, replace=False).tolist()
+        if pos_len > neg_len:
+            self.real_items = np.random.choice(self.real_items, neg_len, replace=False).tolist()
         else:
-            if pos_len > neg_len:
-                self.real_items = np.random.choice(self.real_items, neg_len, replace=False).tolist()
-            else:
-                self.fake_items = np.random.choice(self.fake_items, pos_len, replace=False).tolist()
+            self.fake_items = np.random.choice(self.fake_items, pos_len, replace=False).tolist()
         image_len = len(self.real_items)
         print(f'After balance total number of data: {image_len*2} | pos: {image_len}, neg: {image_len}')
 
@@ -74,23 +59,24 @@ class CelebDF(Dataset):
     def _read_videos(self):
         """read videos
         """
-        all_video_dirs = glob(str(self.data_root / self.data_types / '*'))
-        test_list = open(self.data_root / self.data_types / 'List_of_testing_videos.txt').readlines()
-        test_video_dirs = []
-        for line in test_list:
-            line = line.strip()
-            video_dir = str(self.data_root / self.data_types / line.split()[1].split('.')[0])
-            if not os.path.exists(video_dir):
-                continue
-            test_video_dirs.append(video_dir)
-        train_video_dirs = list(set(all_video_dirs) - set(test_video_dirs))
-        self.video_dirs = train_video_dirs if self.split == 'train' else test_video_dirs
+        all_video_dirs = glob(str(self.data_root / self.data_types / '*' / '*' / '*' / 'images'/ '*'))
+        # test_list = open(self.data_root / self.data_types / 'List_of_testing_videos.txt').readlines()
+        # test_video_dirs = []
+        # for line in test_list:
+        #     line = line.strip()
+        #     video_dir = str(self.data_root / self.data_types / line.split()[1].split('.')[0])
+        #     if not os.path.exists(video_dir):
+        #         continue
+        #     test_video_dirs.append(video_dir)
+        # train_video_dirs = list(set(all_video_dirs) - set(test_video_dirs))
+        # self.video_dirs = train_video_dirs if self.split == 'train' else test_video_dirs
+        self.video_dirs = all_video_dirs
 
     def _read_images(self):
         """read images
         """
         for video_dir in self.video_dirs:
-            label = 0. if 'real' in video_dir else 1.
+            label = 0. if 'original' in video_dir else 1.
             self._read_class_images(label, video_dir)
 
     def _read_class_images(self, label, video_dir):
@@ -136,18 +122,9 @@ class CelebDF(Dataset):
         item = self.items[index]
         image = cv2.cvtColor(cv2.imread(item['img_path']), cv2.COLOR_BGR2RGB)
 
-        if self.pair == True and self.split == 'train':
-            q = self.transform(image=image)['image']
-            k = self.transform(image=image)['image']
-            if self.random_patch != None:
-                q = self.random_patch(q)
-                k = self.random_patch(k)
-            return [q, k], item['label'], item['img_path']
 
         if self.transform is not None:
             image = self.transform(image=image)['image']
-        if self.split == 'train' and self.random_patch != None:
-            image = self.random_patch(image)
 
         return image, item['label'], item['img_path']
 
@@ -161,23 +138,22 @@ if __name__ == '__main__':
 
     args = OmegaConf.load('../configs/test.yaml')
     kwargs = getattr(args.dataset, args.dataset.name)
-    print( kwargs )
 
-    #split = 'train'
-    #transform = create_data_transforms(args.transform, split)
-    #train_dataset = CelebDF(split=split, transform=transform, **kwargs)
-    #train_dataloader = DataLoader(train_dataset,
-    #                              batch_size=args.train.batch_size,
-    #                              shuffle=True,
-    #                              num_workers=4,
-    #                              pin_memory=True)
-    #for i, datas in enumerate(train_dataloader):
-    #    print(i, datas[0].shape, datas[1].shape)
-    #    break
+    # split = 'train'
+    # transform = create_data_transforms(args.transform, split)
+    # train_dataset = CelebDF(split=split, transform=transform, **kwargs)
+    # train_dataloader = DataLoader(train_dataset,
+    #                               batch_size=args.train.batch_size,
+    #                               shuffle=True,
+    #                               num_workers=4,
+    #                               pin_memory=True)
+    # for i, datas in enumerate(train_dataloader):
+    #     print(i, datas[0].shape, datas[1].shape)
+    #     break
 
     split = 'test'
-    #transform = create_data_transforms(args.transform, split)
-    test_dataset = CelebDF(split=split, **kwargs)
+    transform = create_data_transforms(args.transform, split)
+    test_dataset = DFD(split=split, transform=transform, **kwargs)
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=args.test.batch_size,
                                  shuffle=False,

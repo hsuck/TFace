@@ -12,14 +12,17 @@ def create_base_transforms(args, split='train'):
     Returns:
         [transform]: Data transform
     """
-    num_segments = args.num_segments if 'num_segments' in args else 1
+    if args:
+        num_segments = args.num_segments if 'num_segments' in args else 1
+    else:
+        num_segments = 1
     additional_targets = {}
     for i in range(1, num_segments):
         additional_targets[f'image{i}'] = 'image'
 
     if split == 'train':
         base_transform = alb.Compose([
-            alb.HorizontalFlip(),
+            #alb.HorizontalFlip(),
             alb.Resize(args.image_size, args.image_size),
             alb.Normalize(mean=args.mean, std=args.std),
             ToTensorV2(),

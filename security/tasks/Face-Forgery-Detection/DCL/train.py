@@ -40,10 +40,15 @@ class TrainTask(BaseTask):
             self.logger.info('=> Building dataloader')
         datasets = importlib.import_module('datasets', package=self.task_dir)
         self.train_dataloader = datasets.create_dataloader(self.cfg, split='train')
-        cfg_celebdf = copy.deepcopy(self.cfg)
-        cfg_celebdf.dataset['name'] = 'CelebDF'
-        self.val_dataloader = datasets.create_dataloader(cfg_celebdf, split='val')
-        self.test_dataloader = datasets.create_dataloader(cfg_celebdf, split='test')
+        # cfg_celebdf = copy.deepcopy(self.cfg)
+        # cfg_celebdf.dataset['name'] = 'CelebDF'
+        cfg_ffpp = copy.deepcopy(self.cfg)
+        cfg_ffpp.dataset['name'] = 'ffpp'
+        # self.val_dataloader = datasets.create_dataloader(cfg_celebdf, split='val')
+        # self.test_dataloader = datasets.create_dataloader(cfg_celebdf, split='test')
+        # self.epoch_size = len(self.train_dataloader.dataset) // (self.cfg.train.batch_size * self.cfg.world_size)
+        self.val_dataloader = datasets.create_dataloader(cfg_ffpp, split='val')
+        self.test_dataloader = datasets.create_dataloader(cfg_ffpp, split='test')
         self.epoch_size = len(self.train_dataloader.dataset) // (self.cfg.train.batch_size * self.cfg.world_size)
 
     def train(self, epoch):
@@ -55,7 +60,9 @@ class TrainTask(BaseTask):
         progress = ProgressMeter(self.epoch_size, [acces, losses], prefix=f"Epoch:{epoch} ")
 
         # not use moco loss in warmup epochs
-        alpha = 1 if epoch < self.cfg.train.warmup else 0.5
+        # alpha = 1 if epoch < self.cfg.train.warmup else 0.5
+        alpha = 0.5
+        beta = 0.5 if epoch < self.cfg.train.warmup else 0.4
 
         self.model.train()
         end = time.time()
@@ -66,18 +73,26 @@ class TrainTask(BaseTask):
             # get input data from dataloader
             image1 = datas[0][0].to(self.device)
             image2 = datas[0][1].to(self.device)
+            image3 = datas[0][2].to(self.device)
             targets = datas[1].to(self.device)
 
             # forward
             if self.cfg.dataset['FaceForensics'].has_mask == True:
                 mask = datas[3].float().to(self.device)
-                output, loss_moco = self.model(im_q=image1, mask=mask, im_k=image2, labels=targets)
+                output, loss_moco, hloss, inter_hloss = self.model(im_q=image1, mask=mask, im_k=image2, labels=targets, im_j=image3)
+                # output, loss_moco = self.model(im_q=image1, mask=mask, im_k=image2, labels=targets)
             else:
-                output, loss_moco = self.model(im_q=image1, im_k=image2, labels=targets)
+                output, loss_moco, hloss, inter_hloss = self.model(im_q=image1, im_k=image2, labels=targets, im_j=image3)
+                # output, loss_moco = self.model(im_q=image1, im_k=image2, labels=targets)
 
             probs = 1 - torch.softmax(output, dim=1)[:, 0]
             loss_ce = self.criterion(output, targets)
-            loss = alpha * loss_ce + (1 - alpha) * loss_moco
+
+            # final loss
+            # loss = loss_ce
+            # loss = alpha * loss_ce + beta * ( hloss + inter_hloss )
+            loss = alpha * loss_ce + (1 - alpha - beta) * loss_moco + beta * ( hloss + inter_hloss )
+            # loss = alpha * loss_ce + (1 - alpha) * loss_moco
 
             # backward
             self.optimizer.zero_grad()
@@ -138,9 +153,9 @@ class TrainTask(BaseTask):
 
         self.scheduler.step(epoch)
         metrics = self._evaluate(y_preds, y_trues, threshold=0.5)
-        
+
         if self.cfg.local_rank == 0:
-            self._save_checkpoints(metrics, epoch, monitor_metric='ACC')
+            self._save_checkpoints(metrics, epoch, monitor_metric='AUC')
             metrics.loss = losses.avg
             self._log_data(metrics, epoch, prefix='val')
 

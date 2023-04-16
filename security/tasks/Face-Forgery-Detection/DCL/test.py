@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 from glob import glob
 from sklearn import metrics
+from sklearn.metrics import f1_score, precision_recall_curve, auc
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
 
@@ -41,7 +42,7 @@ def load_model(args):
             model = models.__dict__[args.model.name](**args.model.params)
 
         state_dict = checkpoint if args.ckpt_path.endswith('pth') else checkpoint['state_dict']
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict, strict=False)
     else:
         assert getattr(args, 'model', None) is not None
         model = models.__dict__[args.model.name](**args.model.params)
@@ -60,6 +61,7 @@ def model_forward(args, inputs, model):
         [Tensor]
     """
     output = model(inputs)
+    # print( output )
     if type(output) is tuple or type(output) is list:
         output = output[0]
     if output.shape[1] == 2:
@@ -73,8 +75,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='configs/test.yaml')
     parser.add_argument('--distributed', type=int, default=0)
-    parser.add_argument('--exam_id', type=str, default='')
-    parser.add_argument('--ckpt_path', type=str, default='')
+    parser.add_argument('--exam_id', type=str, default=None)
+    parser.add_argument('--ckpt_path', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='')
     parser.add_argument('--compress', type=str, default='')
     parser.add_argument('--constract', type=bool, default=False)
@@ -92,6 +94,7 @@ def main():
 
         setattr(args, k, v)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print( device )
 
     if args.exam_id:
         ckpt_path = glob(f'wandb/*{args.exam_id}/ckpts/model_best.pth.tar')
@@ -112,6 +115,7 @@ def main():
 
     y_trues = []
     y_preds = []
+    scores = []
     acces = []
     img_paths = []
     for i, datas in enumerate(tqdm(test_dataloader)):
@@ -121,19 +125,23 @@ def main():
             y_trues.extend(targets)
             prob = model_forward(args, images, model)
             prediction = (prob >= args.test.threshold).astype(float)
-            y_preds.extend(prob)
+            scores.extend(prob)
+            y_preds.extend(prediction)
             acces.extend(targets == prediction)
             if args.test.record_results:
                 img_paths.extend(datas[2])
 
+    f1 = f1_score( y_trues, y_preds, average = 'binary' )
     acc = np.mean(acces)
-    fpr, tpr, thresholds = metrics.roc_curve(y_trues, y_preds, pos_label=1)
+    fpr, tpr, thresholds = metrics.roc_curve(y_trues, scores, pos_label=1)
     AUC = metrics.auc(fpr, tpr)
+    precision, recall, _ = precision_recall_curve(y_trues, scores)
+    pr_auc = auc(recall, precision)
     eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
     thresh = interp1d(fpr, thresholds)(eer)
-    print(f'#Total# ACC:{acc:.5f}  AUC:{AUC:.5f}  EER:{100*eer:.2f}(Thresh:{thresh:.3f})')
+    print(f'#Total#  ACC:{acc:.5f}  AUC:{AUC:.5f}  F1:{f1:.5f}  PR AUC:{pr_auc:.5f}  EER:{100*eer:.2f}  (Thresh:{thresh:.3f})')
 
-    preds = np.array(y_preds) >= args.test.threshold
+    preds = np.array(scores) >= args.test.threshold
     pred_fake_nums = np.sum(preds)
     pred_real_nums = len(preds) - pred_fake_nums
     print(f"pred dataset:{args.dataset.name},pred id: {args.exam_id},compress:{args.compress}")
@@ -144,9 +152,11 @@ def main():
             task_id = args.exam_id
             filename = glob(f'wandb/*{task_id}/preds_{args.dataset.name}.log')
         else:
-            task_id = args.model.params.model_path.split('/')[1]
-            filename = f'logs/test/{task_id}_preds_{args.dataset.name}.log'
-        save_test_results(y_trues, y_preds, img_paths, filename=filename)
+            task_id = args.ckpt_path.split('/')[2]
+            filename = f'wandb/{task_id}/preds_{args.dataset.name}.log'
+        print( task_id )
+        print( filename )
+        # save_test_results(y_trues, y_preds, img_paths, filename=filename)
 
 
 if __name__ == '__main__':

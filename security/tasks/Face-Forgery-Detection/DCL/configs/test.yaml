@@ -1,25 +1,28 @@
 seed: 1234
-torch_home: 'PATH TO YOUR TORCH HOME'
+torch_home: '/home/u9775528/.local/lib/python3.7/site-packages/torch/'
 froze: False
 
 dataset:
-  name: 'celeb_df'
+  name: 'CelebDF'
   pair: False
   ffpp:
-    data_root: 'PATH TO YOUR DATA ROOT'
-    data_types: ''
+    data_root: '/work/u9775528/'
+    data_types: [ 'jpeg_10_images' ]
     compressions: 'c23'
     num_frames: 50
-    methods:
+    methods: 
     has_mask: False
     mask_size: 10
     pair: True
-    alb: True
-  celeb_df: 
-    data_root: 'PATH TO YOUR DATA ROOT'
-    data_types: 'images_v1'
-    num_frames: 25
+  CelebDF: 
+    data_root: '/work/u9775528/CelebDF'
+    data_types: 'jpeg'
+    num_frames: 50
     sample: 0
+  DFD: 
+    data_root: '/work/u9775528/DFD'
+    data_types: ''
+    num_frames: 25
 
   wild_deepfake:
     root: 'PATH TO YOUR DATA ROOT'

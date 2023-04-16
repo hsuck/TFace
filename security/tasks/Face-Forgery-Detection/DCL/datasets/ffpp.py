@@ -13,7 +13,6 @@ try:
 except Exception:
     from utils import *
 
-
 class FaceForensics(Dataset):
     def __init__(self,
                  data_root,
@@ -31,7 +30,8 @@ class FaceForensics(Dataset):
                  corr_pair=False,
                  random_patch=None,
                  srm=False,
-                 diff_frame=False):
+                 diff_frame=False,
+                 jpeg_frame=False):
         """FaceForensics++ dataset
         Reference: Faceforensics: A large-scale video dataset for forgery detection in human facee, ICCV2019
 
@@ -54,7 +54,7 @@ class FaceForensics(Dataset):
             diff_frame (bool, optional): The probability of using diff_frame data views generation. Defaults to False.
         """
         self.data_root = data_root
-        self.data_types = data_types
+        self.data_types = data_types[0]
         self.num_frames = num_frames
         self.split = split
         self.transform = transform
@@ -79,19 +79,26 @@ class FaceForensics(Dataset):
         self.balabce = balance
         self.fake_id_dict = {}
         self.diff_frame = diff_frame
+        self.jpeg_frame = jpeg_frame
 
         if self.methods is None:
-            self.methods = ['youtube', 'Deepfakes', 'Face2Face', 'FaceSwap', 'NeuralTextures']
+            self.methods = ['', 'Deepfakes', 'Face2Face', 'FaceSwap', 'NeuralTextures']
 
         self.real_items = self._load_items([self.methods[0]])
         self.fake_items = self._load_items(self.methods[1:])
+        if len( data_types ) != 1:
+            # print( data_types[1] )
+            self.data_types = data_types[1]
+            self.real_items += self._load_items([self.methods[0]])
+            self.fake_items += self._load_items(self.methods[1:])
 
         pos_len = len(self.real_items)
         neg_len = len(self.fake_items)
         print(f'Total number of data: {pos_len+neg_len} | pos: {pos_len}, neg: {neg_len}')
         self._convert_dict()
 
-        if self.split == 'train' and self.balabce == True:
+        # if self.split == 'train' and self.balabce == True:
+        if self.balabce == True:
             np.random.seed(1234)
             if pos_len > neg_len:
                 self.real_items = np.random.choice(self.real_items, neg_len, replace=False).tolist()
@@ -107,6 +114,11 @@ class FaceForensics(Dataset):
         if diff_frame != None:
             self.diff_items = self.get_differ_frame()
             self.diff_prob = diff_frame
+        if jpeg_frame != None:
+            self.jpeg_items = self.get_jpeg_frame()
+            self.jpeg_prob = jpeg_frame
+
+        self.jpeg_items = self.get_jpeg_frame()
 
     def _convert_dict(self):
         """Generate data dict
@@ -129,7 +141,7 @@ class FaceForensics(Dataset):
             frame_id = item['frame_id']
 
             original_folder = '/'.join(original_path.split('/')[:-1]) + '/'
-            face_paths = glob.glob(os.path.join(original_folder, '*.jpg'))
+            face_paths = glob.glob(os.path.join(original_folder, '*.png'))
             differ_path = random.choice(face_paths)
             differ_item.append({
                 'img_path': differ_path,
@@ -139,11 +151,38 @@ class FaceForensics(Dataset):
             })
         return differ_item
 
-    def get_corresponding(self):
-        """Get corresbonding image
+    def get_jpeg_frame(self):
+        """Get corresbonding jpeg_frame image
 
         Returns:
-            Dict: Dict of corresbonding image
+            Dict: Dict of jpeg_frame image
+        """
+        jpeg_item = []
+        for item in self.items:
+            original_path = item['img_path']
+            label = item['label']
+            video_id = item['video_id']
+            frame_id = item['frame_id']
+
+            tmp = original_path.split('/')
+            if tmp[-3] == 'larger_images':
+                tmp[-3] = 'jpeg_10_images'
+            else:
+                tmp[-3] = 'larger_images'
+            jpeg_path = '/'.join( tmp )
+            jpeg_item.append({
+                'img_path': jpeg_path,
+                'label': label,
+                'video_id': video_id,
+                'frame_id': frame_id,
+            })
+        return jpeg_item
+
+    def get_corresponding(self):
+        """Get corresponding image
+
+        Returns:
+            Dict: Dict of corresponding image
         """
         corr_item = []
         for item in self.items:
@@ -153,7 +192,7 @@ class FaceForensics(Dataset):
             frame_id = item['frame_id']
             if label == 0.0:
                 original_folder = '/'.join(original_path.split('/')[:-1]) + '/'
-                face_paths = glob.glob(os.path.join(original_folder, '*.jpg'))
+                face_paths = glob.glob(os.path.join(original_folder, '*.png'))
                 corr_path = random.choice(face_paths)
                 corr_item.append({
                     'img_path': corr_path,
@@ -162,8 +201,8 @@ class FaceForensics(Dataset):
                     'frame_id': corr_path.split('/')[:-4],
                 })
             else:
-                orginal_method = original_path.split('/')[-5]
-                new_list = list(set(self.methods[1:]).difference(set([orginal_method])))
+                original_method = original_path.split('/')[-5]
+                new_list = list(set(self.methods[1:]).difference(set([original_method])))
                 method = np.random.choice(new_list)
 
                 corr_path = original_path.split('/')
@@ -172,7 +211,7 @@ class FaceForensics(Dataset):
 
                 if not os.path.exists(corr_path):
                     original_folder = '/'.join(corr_path.split('/')[:-1]) + '/'
-                    face_paths = glob.glob(os.path.join(original_folder, '*.jpg'))
+                    face_paths = glob.glob(os.path.join(original_folder, '*.png'))
                     corr_path = random.choice(face_paths)
                 corr_item.append({
                     'img_path': corr_path,
@@ -196,12 +235,12 @@ class FaceForensics(Dataset):
             videos = [x for x in video_paths if get_file_name(x) in video_ids]
             video_dirs.extend(videos)
 
+
         items = []
         for video_dir in video_dirs:
-            label = int(0) if 'original' in video_dir else int(1)
+            label = int(0) if 'Origin' in video_dir else int(1)
             sub_items = self._load_sub_items(video_dir, label)
             items.extend(sub_items)
-
         return items
 
     def _load_sub_items(self, video_dir, label):
@@ -245,9 +284,10 @@ class FaceForensics(Dataset):
             method = image_path.split("/")[-5]
             item = image_path.split("/")[-2]
             tail = image_path.split("/")[-1]
-            mask_path = f"../{method}_masks/images_v1/"
+            mask_path = f"/work/u9775528/{method}_masks/images_v1/"
             mask_path = mask_path + item + "/" + tail
             if not os.path.exists(mask_path):
+                print('not exist')
                 mask = torch.ones(mask_size)
             else:
                 mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
@@ -278,23 +318,40 @@ class FaceForensics(Dataset):
             corr_image = cv2.cvtColor(cv2.imread(corr_item['img_path']), cv2.COLOR_BGR2RGB)
             k = self.transform(image=corr_image)['image']
 
-        elif self.diff_frame == True and random.random() < self.diff_prob:
+        elif self.diff_frame != None and random.random() < self.diff_prob:
             diff_item = self.diff_items[index]
             corr_image = cv2.cvtColor(cv2.imread(diff_item['img_path']), cv2.COLOR_BGR2RGB)
             k = self.transform(image=corr_image)['image']
 
+        elif self.jpeg_frame != None and random.random() < self.jpeg_prob:
+            jpeg_item = self.jpeg_items[index]
+            corr_image = cv2.cvtColor(cv2.imread(jpeg_item['img_path']), cv2.COLOR_BGR2RGB)
+            k = self.transform(image=corr_image)['image']
+
         else:
             k = self.transform(image=image)['image']
+
+        jpeg_item = self.jpeg_items[index]
+        assert(jpeg_item['video_id'] == item['video_id'])
+        assert(jpeg_item['frame_id'] == item['frame_id'])
+        corr_image_2 = cv2.cvtColor(cv2.imread(jpeg_item['img_path']), cv2.COLOR_BGR2RGB)
+        j = self.transform(image=corr_image_2)['image']
 
         if self.srm_conv != None and random.random() < self.srm_prob:
             q = q.view(1, q.shape[0], q.shape[1], q.shape[2])
             srm_q = self.srm_conv(q)
             q = q + srm_q
             q = q.squeeze()
+
             k = k.view(1, k.shape[0], k.shape[1], k.shape[2])
             k_srm = self.srm_conv(k)
             k = k + k_srm
             k = k.squeeze()
+
+            j = j.view(1, j.shape[0], j.shape[1], j.shape[2])
+            j_srm = self.srm_conv(j)
+            j = j + j_srm
+            j = j.squeeze()
 
         if self.has_mask:
             mask = self._load_mask(item['img_path'],
@@ -302,6 +359,8 @@ class FaceForensics(Dataset):
                                    binary=True,
                                    flip=flip,
                                    mask_size=(q.shape[1], q.shape[2]))
+            mask = mask.squeeze()
+            mask = torch.from_numpy(cv2.resize(mask.numpy(), (self.mask_size, self.mask_size)))
 
         if self.random_patch != None:
             if self.has_mask:
@@ -312,9 +371,11 @@ class FaceForensics(Dataset):
                 q = self.random_patch(q)
 
         if self.has_mask:
-            return [q, k], item['label'], item['img_path'], mask
+            return [q, k, j], item['label'], item['img_path'], mask
+            # return [q, k], item['label'], item['img_path'], mask
         else:
-            return [q, k], item['label'], item['img_path']
+            return [q, k, j], item['label'], item['img_path']
+            # return [q, k], item['label'], item['img_path']
 
     def _load_test_data(self, index, item, image):
 
@@ -361,13 +422,14 @@ def get_video_ids(spl, splits_path):
 
 
 if __name__ == '__main__':
+    # from factory import create_data_transforms
     from transforms import create_data_transforms
     from omegaconf import OmegaConf
 
-    args = OmegaConf.load('../configs/dcl.yaml')
-    args.dataset.name = 'ffpp'
+    args = OmegaConf.load('../configs/train.yaml')
+    #args.dataset.name = 'ffpp'
     kwargs = getattr(args.dataset, args.dataset.name)
-
+    print( kwargs )
     split = 'train'
     transform = create_data_transforms(args.transform, split)
     train_dataset = FaceForensics(split=split, transform=transform, image_size=args.transform.image_size, **kwargs)
@@ -377,11 +439,12 @@ if __name__ == '__main__':
                                   num_workers=4,
                                   pin_memory=True)
     for i, datas in enumerate(train_dataloader):
-        print(i, datas[0].shape, datas[1].shape)
+        print(i, datas[0][0].shape, datas[0][1].shape, datas[1].shape)
         if kwargs.has_mask is True:
             print(datas[3].shape)
-        break
-
+            break
+    _ = input('>')
+    """
     split = 'val'
     transform = create_data_transforms(args.transform, split)
     val_dataset = FaceForensics(split=split, transform=transform, image_size=args.transform.image_size, **kwargs)
@@ -395,7 +458,7 @@ if __name__ == '__main__':
         if kwargs.has_mask is True:
             print(datas[3].shape)
         break
-
+    """
     split = 'test'
     transform = create_data_transforms(args.transform, split)
     test_dataset = FaceForensics(split=split, transform=transform, image_size=args.transform.image_size, **kwargs)
@@ -406,6 +469,4 @@ if __name__ == '__main__':
                                  pin_memory=True)
     for i, datas in enumerate(test_dataloader):
         print(i, datas[0].shape, datas[1].shape)
-        if kwargs.has_mask is True:
-            print(datas[3].shape)
         break

@@ -1,7 +1,12 @@
 import copy
 import torch
 import torch.nn as nn
-
+import numpy as np
+import cv2
+import random, string
+from torchvision.utils import save_image
+import matplotlib.pyplot as plt
+from . import hash_loss
 
 class DCL(nn.Module):
     def __init__(self, base_encoder, dim=128, K=65536, m=0.999, T=0.07, threshold=5):
@@ -26,9 +31,15 @@ class DCL(nn.Module):
 
         self.encoder_q = base_encoder
         self.encoder_k = copy.deepcopy(base_encoder)
+        # a new encoder for hash loss
+        self.encoder_j = copy.deepcopy(base_encoder)
 
+        torch.set_printoptions( threshold = np.inf  )
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.requires_grad = False  # ema update
+
+        for param_q, param_j in zip(self.encoder_q.parameters(), self.encoder_j.parameters()):
+            param_j.requires_grad = False  # ema update
         # prototype for real feature
         self.register_buffer("real_queue", torch.randn(dim))
         self.register_buffer("hard_fake_queue", torch.randn(dim, K + 128))  # hard queue for fake image
@@ -51,6 +62,11 @@ class DCL(nn.Module):
     def _momentum_update_key_encoder(self):
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
+
+    @torch.no_grad()
+    def _momentum_update_j_encoder(self):
+        for param_q, param_j in zip(self.encoder_q.parameters(), self.encoder_j.parameters()):
+            param_j.data = param_j.data * self.m + param_q.data * (1. - self.m)
 
     @torch.no_grad()
     def _dequeue_and_enqueue_hard(self, keys, type_queue="real"):
@@ -125,7 +141,7 @@ class DCL(nn.Module):
         feature = nn.functional.normalize((feature - w), dim=1)
         return feature
 
-    def forward(self, im_q, mask=None, im_k=None, labels=None):
+    def forward(self, im_q, mask=None, im_k=None, labels=None, im_j=None, inter=False):
         """
         Input:
             im_q: a batch of query images
@@ -133,23 +149,52 @@ class DCL(nn.Module):
         Output:
             logits, targets
         """
-        output_q, feature_map = self.encoder_q(im_q)  # queries: NxC
+
+        output_q, feature_map, inter_featmap = self.encoder_q(im_q)  # queries: NxC
+        # output_q, feature_map = self.encoder_q(im_q)  # queries: NxC
 
         if im_k == None and labels == None:
             # for inference
             return output_q, feature_map
+
         q = self.encoder_q.feature_squeeze(feature_map).squeeze().view(feature_map.shape[0], -1)
         q = nn.functional.normalize(q, dim=1)
-        feature_map = feature_map.view(feature_map.shape[0], feature_map.shape[1], -1)
 
+        feature_map = feature_map.view(feature_map.shape[0], feature_map.shape[1], -1)
         feature_map = nn.functional.normalize(feature_map, dim=1)
+
+        inter_featmap = self.encoder_q.feature_squeeze2(inter_featmap).squeeze().view(inter_featmap.shape[0], -1)
+        inter_featmap = nn.functional.normalize(inter_featmap, dim=1)
+
+        with torch.no_grad():
+            self._momentum_update_j_encoder()
+            _, feature_map_j, inter_featmap_j = self.encoder_j(im_j)  # queries: NxC
+            j = self.encoder_j.feature_squeeze(feature_map_j).squeeze().view(feature_map_j.shape[0], -1)
+            j = nn.functional.normalize(j, dim=1)
+
+            inter_featmap_j = self.encoder_j.feature_squeeze2(inter_featmap_j).squeeze().view(inter_featmap_j.shape[0], -1)
+            inter_featmap_j = nn.functional.normalize(inter_featmap_j, dim=1)
+
+        # calculate the hashes of the layer-2's featmaps and the last layer's featmaps
+        inter_hash_1 = hash_loss.Hash( self, inter_featmap )
+        inter_hash_2 = hash_loss.Hash( self, inter_featmap_j )
+
+        hash_1 = hash_loss.Hash( self, q )
+        hash_2 = hash_loss.Hash( self, j )
+
+        model2 = hash_loss.Hash_Loss()
+
+        # calculate the hash losses
+        inter_hloss = model2( inter_hash_1, inter_hash_2 )
+        hloss = model2( hash_1, hash_2 )
 
         with torch.no_grad():
             self._momentum_update_key_encoder()
 
             im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-            _, feature_k = self.encoder_k(im_k)  # keys: NxC
+            _, feature_k, __ = self.encoder_k(im_k)  # keys: NxC
+            # _, feature_k = self.encoder_k(im_k)  # keys: NxC
             k = self.encoder_k.feature_squeeze(feature_k).squeeze().view(feature_k.shape[0], -1)
 
             k = nn.functional.normalize(k, dim=1)
@@ -193,7 +238,7 @@ class DCL(nn.Module):
             l_real_sim2 = torch.sum(torch.exp(l_real_sim2), dim=1)
             l_negative_sim = torch.sum(torch.exp(l_negative_sim), dim=1)
             loss_real_intra = -torch.log(torch.sum(l_real_sim1))
-            loss_fake_intra = -torch.log((torch.sum(l_real_sim2)) / 
+            loss_fake_intra = -torch.log((torch.sum(l_real_sim2)) /
                                          (torch.sum(l_negative_sim) + torch.sum(l_real_sim2)))
             loss_intra = loss_fake_intra + 0.01 * loss_real_intra
         # calculate prototype for hard sample selection
@@ -238,12 +283,11 @@ class DCL(nn.Module):
         l_pos /= self.T
         logits1 = torch.cat([l_pos, l_neg], dim=1)
         labels = torch.zeros(logits1.shape[0], dtype=torch.long).cuda()
-
         loss_inter = self.criterion(logits1, labels)
         loss = loss_inter + 0.1 * loss_intra
 
-        return output_q, loss
-
+        return output_q, loss, hloss, inter_hloss
+        # return output_q, loss
 
 # utils
 @torch.no_grad()

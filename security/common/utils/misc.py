@@ -11,7 +11,7 @@ import numpy as np
 
 def set_seed(SEED):
     """This function set the random seed for the training process
-    
+
     Args:
         SEED (int): the random seed
     """
@@ -63,9 +63,9 @@ def init_wandb_workspace(cfg):
 
 def save_test_results(img_paths, y_preds, y_trues, filename='results.log'):
     assert len(y_trues) == len(y_preds) == len(img_paths)
-
+    print(len(img_paths))
     with open(filename, 'w') as f:
         for i in range(len(img_paths)):
             print(img_paths[i], end=' ', file=f)
-            print(y_preds[i], file=f)
-            print(y_trues[i], end=' ', file=f)
+            print(y_preds[i], end= ' ', file=f)
+            print(y_trues[i], file=f)

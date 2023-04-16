@@ -15,7 +15,7 @@ class StrEnum(str, Enum):
     """Utility functions
 
     Args:
-        str ([type]) 
+        str ([type])
         Enum ([type])
     """
     def __str__(self):
@@ -58,15 +58,16 @@ class DataType(StrEnum):
 
 
 class Method:
-    REAL_DIR = "original_sequences/"
-    FAKE_DIR = "manipulated_sequences/"
+    # specify the path
+    REAL_DIR = "/work/u9775528/Origin"
+    FAKE_DIR = "/work/u9775528/"
 
     def __init__(self, name: str, is_real: bool):
         """Method class for FaceForensics++ dataset
 
         Args:
-            name (str): 
-            is_real (bool): 
+            name (str):
+            is_real (bool):
         """
         self.name = name
         self.is_real = is_real
@@ -82,7 +83,7 @@ class Method:
 
 
 ACTORS = Method("actors", is_real=True)
-YOUTUBE = Method("youtube", is_real=True)
+YOUTUBE = Method("", is_real=True)
 
 DEEP_FAKE_DETECTION = Method("DeepFakeDetection", is_real=False)
 DEEPFAKES = Method("Deepfakes", is_real=False)
@@ -140,7 +141,7 @@ class FaceForensicsDataStructure:
             data_types (Iterable[Union[str, DataType]], optional):  Defaults to DataType.images_v1.
 
         Raises:
-            FileNotFoundError: 
+            FileNotFoundError:
         """
         self.root_dir = Path(root_dir)
         if not self.root_dir.exists():
@@ -152,6 +153,6 @@ class FaceForensicsDataStructure:
     def get_subdirs(self) -> List[Path]:
         """Returns subdirectories containing datatype """
         return [
-            self.root_dir / method.get_dir_str() / str(compression) / str(data_type)
+            self.root_dir / method.get_dir_str() / str(compression)  / str(data_type)
             for method, compression, data_type in itertools.product(self.methods, self.compressions, self.data_types)
         ]
