@@ -188,6 +188,7 @@ class DCL(nn.Module):
         inter_hloss = model2( inter_hash_1, inter_hash_2 )
         hloss = model2( hash_1, hash_2 )
 
+        # This part is Intra-Instance Contrastive Learning.
         with torch.no_grad():
             self._momentum_update_key_encoder()
 
@@ -271,7 +272,8 @@ class DCL(nn.Module):
             self._dequeue_and_enqueue_hard(real_k_hard, 'real')
         if len(fake_k_hard.shape) == 2:
             self._dequeue_and_enqueue_hard(fake_k_hard, 'fake')
-        # inter-instance loss
+
+        # This part is Inter-Instance Contrastive Learning.
         l_real_neg1 = torch.einsum('nc,ck->nk', [real_q, self.hard_fake_queue.clone().detach()])
         l_real_neg = l_real_neg1
         l_fake_neg1 = torch.einsum('nc,ck->nk', [fake_q, self.hard_real_queue.clone().detach()])
