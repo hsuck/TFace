@@ -59,7 +59,7 @@ class DataType(StrEnum):
 
 class Method:
     # specify the path
-    REAL_DIR = "/work/u9775528/Origin"
+    REAL_DIR = "/work/u9775529/Origin"
     FAKE_DIR = "/work/u9775528/"
 
     def __init__(self, name: str, is_real: bool):

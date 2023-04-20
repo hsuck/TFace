@@ -1,4 +1,4 @@
-seed: 1234
+seed: 1235
 torch_home: '/home/u9775528/.local/lib/python3.7/site-packages/torch/'
 froze: False
 use_amp: False

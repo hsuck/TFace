@@ -27,7 +27,7 @@ If you are interested in this work, please cite our [paper](https://arxiv.org/pd
 
 ### Environment
 
-- Python 3 (Recommend to use Anaconda)
+- Python 3.7 (Recommend to use Anaconda)
 - PyTorch >= 1.0
 - NVIDIA GPU + CUDA (Need at least 15G GPU memory)
 
@@ -60,7 +60,16 @@ return x, x2
 ### Dataset
 
 For the Faceforensics++, you should extract face using DSFD and generate the forgery masks
-And change the data_root in `configs/train.yaml` as your own data_root.
+And change the `data_root` in `configs/train.yaml` as your own data root.
+
+You also need to change variables `REAL_DIR` and `FAKE_DIR` in `datasets/utils/data_structure.py` as your own root at line 63, 64.
+
+You can change argument `data_types` in `configs/train.yaml` for using c23 images or jpeg images.
+E.g. 
+- `data_types: ['larger_images']` for c23 images
+- `data_types: ['jpeg_10_images']` for jpeg images
+- `data_types: ['larger_images', 'jpeg_10_images']` for both
+
 
 ## Train
 
