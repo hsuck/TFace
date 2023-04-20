@@ -62,7 +62,7 @@ return x, x2
 For the Faceforensics++, you should extract face using DSFD and generate the forgery masks
 And change the `data_root` in `configs/train.yaml` as your own data root.
 
-You also need to change variables `REAL_DIR` and `FAKE_DIR` in `datasets/utils/data_structure.py` as your own root at line 63, 64.
+You also need to change variables `REAL_DIR` and `FAKE_DIR` in `datasets/utils/data_structure.py` at line 63, 64 as your own root.
 
 You can change argument `data_types` in `configs/train.yaml` for using c23 images or jpeg images.
 E.g. 
